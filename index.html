@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Network Visualizations</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <header>
+    <h1>Network Visualizations</h1>
+    <nav>
+      <button class="tab active" data-tab="home">Home</button>
+      <button class="tab" data-tab="criterion">Criterion Actor Network</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="home" class="tab-content active">
+      <p>
+        This site collects interactive network visualizations.
+        The Criterion Actor Network explores co-starring structure
+        across the Criterion Collection.
+      </p>
+    </section>
+
+    <section id="criterion" class="tab-content">
+      <div id="criterion-app">
+        <p>Criterion Actor Network visualization loads here.</p>
+        <!-- later: <svg> or <canvas> or iframe -->
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
