@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Kevin Bacon Game</title>
+  <style>
+    :root {
+      color-scheme: light;
+    }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 0;
+      padding: 24px;
+      background: #fafafa;
+      color: #222;
+    }
+    h2 {
+      margin-top: 0;
+    }
+    .panel {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 16px;
+      max-width: 900px;
+    }
+    .row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    label {
+      font-weight: 600;
+      display: block;
+      margin-bottom: 4px;
+    }
+    input {
+      padding: 8px 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      min-width: 240px;
+      font-size: 1rem;
+    }
+    button {
+      padding: 10px 14px;
+      border: 1px solid #222;
+      background: #222;
+      color: #fff;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .note {
+      color: #666;
+      font-size: 0.95rem;
+    }
+    .result {
+      margin-top: 16px;
+      padding: 12px;
+      background: #f3f3f3;
+      border-radius: 6px;
+      white-space: pre-wrap;
+    }
+    .path {
+      margin-top: 12px;
+      padding-left: 18px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Kevin Bacon Game (Criterion Actor Network)</h2>
+
+  <div class="panel">
+    <div class="row">
+      <div>
+        <label for="actor-a">Actor 1</label>
+        <input id="actor-a" type="text" placeholder="e.g., Jean Gabin" />
+      </div>
+      <div>
+        <label for="actor-b">Actor 2</label>
+        <input id="actor-b" type="text" placeholder="e.g., Peter Lorre" />
+      </div>
+      <div style="align-self: flex-end;">
+        <button id="solve" disabled>Find Connection</button>
+      </div>
+    </div>
+
+    <p class="note">Enter two actor names from the Criterion network. The game finds a shortest path and checks if they are connected within 6 edges, listing the connecting movies.</p>
+
+    <div id="status" class="note">Loading actor network...</div>
+    <div id="result" class="result" hidden></div>
+  </div>
+
+  <script>
+    const MAX_EDGES = 6;
+    const statusEl = document.getElementById("status");
+    const resultEl = document.getElementById("result");
+    const solveBtn = document.getElementById("solve");
+    const inputA = document.getElementById("actor-a");
+    const inputB = document.getElementById("actor-b");
+
+    let actorNetwork = null;
+    let actorIndex = null;
+    let movieTitleMap = null;
+
+    function normalize(name) {
+      return name.trim().toLowerCase();
+    }
+
+    function buildIndex(data) {
+      const index = new Map();
+      Object.keys(data).forEach(name => {
+        index.set(normalize(name), name);
+      });
+      return index;
+    }
+
+    function resolveActor(name) {
+      const key = normalize(name);
+      return actorIndex.get(key) || null;
+    }
+
+    function getNeighbors(actor) {
+      const entry = actorNetwork[actor];
+      if (!entry) return [];
+      if (Array.isArray(entry)) {
+        if (entry.length === 0) return [];
+        if (typeof entry[0] === "string") return entry;
+        if (typeof entry[0] === "object" && entry[0] && entry[0].name) {
+          return entry.map(n => n.name);
+        }
+      }
+      if (typeof entry === "object") {
+        return Object.keys(entry);
+      }
+      return [];
+    }
+
+    function getMoviesBetween(a, b) {
+      const entry = actorNetwork[a];
+      if (!entry) return [];
+      if (typeof entry === "object" && !Array.isArray(entry)) {
+        const movies = entry[b];
+        if (Array.isArray(movies)) return movies;
+      }
+      if (Array.isArray(entry) && entry.length > 0 && typeof entry[0] === "object") {
+        const match = entry.find(n => n.name === b);
+        if (match && Array.isArray(match.movies)) return match.movies;
+      }
+      return [];
+    }
+
+    function bfsShortestPath(start, goal, maxEdges) {
+      if (start === goal) return [start];
+      const queue = [[start, 0]];
+      const visited = new Set([start]);
+      const prev = new Map();
+
+      while (queue.length) {
+        const [current, depth] = queue.shift();
+        if (depth >= maxEdges) continue;
+
+        for (const neighbor of getNeighbors(current)) {
+          if (visited.has(neighbor)) continue;
+          visited.add(neighbor);
+          prev.set(neighbor, current);
+          if (neighbor === goal) {
+            const path = [goal];
+            let node = goal;
+            while (prev.has(node)) {
+              node = prev.get(node);
+              path.push(node);
+            }
+            path.reverse();
+            return path;
+          }
+          queue.push([neighbor, depth + 1]);
+        }
+      }
+      return null;
+    }
+
+    function formatMovieLabel(movie) {
+      if (typeof movie === "string") {
+        return movieTitleMap?.[movie] || movie;
+      }
+      if (typeof movie === "number") {
+        const key = String(movie);
+        return movieTitleMap?.[key] || `Movie ${movie}`;
+      }
+      return "Movie";
+    }
+
+    function describePath(path) {
+      if (!path) return "";
+      const lines = [];
+      for (let i = 0; i < path.length - 1; i += 1) {
+        const a = path[i];
+        const b = path[i + 1];
+        const movies = getMoviesBetween(a, b);
+        if (movies.length) {
+          const labels = movies.map(formatMovieLabel).join(", ");
+          lines.push(`${a} -> ${labels} -> ${b}`);
+        } else {
+          lines.push(`${a} -> ${b}`);
+        }
+      }
+      return lines.join("\n");
+    }
+
+    function updateSolveState() {
+      solveBtn.disabled = !actorNetwork;
+    }
+
+    solveBtn.addEventListener("click", () => {
+      const rawA = inputA.value;
+      const rawB = inputB.value;
+      resultEl.hidden = false;
+
+      if (!rawA.trim() || !rawB.trim()) {
+        resultEl.textContent = "Please enter both actor names.";
+        return;
+      }
+
+      const actorA = resolveActor(rawA);
+      const actorB = resolveActor(rawB);
+
+      if (!actorA || !actorB) {
+        const missing = [
+          !actorA ? `"${rawA.trim()}"` : null,
+          !actorB ? `"${rawB.trim()}"` : null
+        ].filter(Boolean);
+        resultEl.textContent = `Actor not found: ${missing.join(" and ")}`;
+        return;
+      }
+
+      const path = bfsShortestPath(actorA, actorB, MAX_EDGES);
+
+      if (!path) {
+        resultEl.textContent = `No connection found within ${MAX_EDGES} edges.`;
+        return;
+      }
+
+      const edges = path.length - 1;
+      const header = `Connected in ${edges} edge${edges === 1 ? "" : "s"}.`;
+      const detail = describePath(path);
+      resultEl.textContent = `${header}\n\n${detail}`;
+    });
+
+    Promise.all([
+      fetch("actor_network_with_movies.json").then(res => res.json()),
+      fetch("criterion_id_to_title.json").then(res => res.json())
+    ])
+      .then(([network, titleMap]) => {
+        actorNetwork = network;
+        actorIndex = buildIndex(network);
+        movieTitleMap = titleMap;
+        statusEl.textContent = `Loaded ${Object.keys(actorNetwork).length} actors.`;
+        updateSolveState();
+      })
+      .catch(err => {
+        console.error(err);
+        statusEl.textContent = "Failed to load actor network.";
+      });
+  </script>
+</body>
+</html>
