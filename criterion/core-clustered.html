@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Core Actor Network (Clustered)</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    :root { color-scheme: light; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 0;
+      padding: 24px;
+      background: #fafafa;
+      color: #222;
+    }
+    h2 { margin: 0 0 8px; }
+    .controls {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    select {
+      padding: 6px 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #fff;
+    }
+    .meta { color: #666; font-size: 0.95rem; }
+    .layout {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      flex-wrap: nowrap;
+    }
+    .layout svg {
+      flex: 1 1 auto;
+    }
+    svg { border: 1px solid #ddd; background: #fff; }
+    .panel {
+      width: 320px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .panel h3 { margin: 0 0 8px; font-size: 1rem; }
+    .panel-content { font-size: 0.95rem; color: #333; }
+    .panel-list { margin: 8px 0 0; padding-left: 18px; }
+    .panel-list li { margin: 4px 0; }
+    .panel-meta { color: #666; font-size: 0.9rem; }
+    .panel-note { color: #666; font-size: 0.9rem; margin-top: 6px; }
+    .node { stroke: #fff; stroke-width: 0.5px; }
+    .link { stroke: #bbb; stroke-opacity: 0.25; }
+    .tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(0,0,0,0.8);
+      color: #fff;
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h2>Core Actor Network (Clustered)</h2>
+  <div class="controls">
+    <label for="cluster-mode">Cluster:</label>
+    <select id="cluster-mode">
+      <option value="louvain">Louvain</option>
+      <option value="leiden">Leiden</option>
+    </select>
+    <span id="meta" class="meta">Loading…</span>
+  </div>
+  <div id="legend" class="meta"></div>
+
+  <div class="layout">
+    <svg id="viz" width="1100" height="700"></svg>
+    <aside id="side-panel" class="panel">
+      <h3>Cluster Details</h3>
+      <div id="panel-content" class="panel-content">Hover a node to see cluster highlights.</div>
+    </aside>
+  </div>
+  <div id="tooltip" class="tooltip"></div>
+
+  <script>
+    const width = 1200;
+    const height = 700;
+    const svg = d3.select("#viz");
+    const tooltip = d3.select("#tooltip");
+    const metaEl = document.getElementById("meta");
+    const legendEl = document.getElementById("legend");
+    const clusterModeEl = document.getElementById("cluster-mode");
+    const panelContent = document.getElementById("panel-content");
+
+    const color = d3.scaleOrdinal(d3.schemeTableau10);
+
+    const zoomLayer = svg.append("g");
+    svg.call(d3.zoom().scaleExtent([0.1, 6]).on("zoom", (event) => {
+      zoomLayer.attr("transform", event.transform);
+    }));
+
+    Promise.all([
+      d3.json("core_clustered.json"),
+      d3.json("core_cluster_summaries.json")
+    ]).then(([data, summaries]) => {
+      const nodes = data.nodes.map(d => ({...d}));
+      const links = data.links.map(d => ({...d}));
+
+      metaEl.textContent = `Core size: ${data.meta.core_size} | Louvain communities: ${data.meta.louvain_communities} | Leiden communities: ${data.meta.leiden_communities}`;
+
+      const link = zoomLayer.append("g")
+        .attr("class", "links")
+        .selectAll("line")
+        .data(links)
+        .join("line")
+        .attr("class", "link");
+
+      const node = zoomLayer.append("g")
+        .attr("class", "nodes")
+        .selectAll("circle")
+        .data(nodes)
+        .join("circle")
+        .attr("class", "node")
+        .attr("r", 3)
+        .attr("fill", d => color(d[clusterModeEl.value] ?? 0))
+        .on("mousemove", (event, d) => {
+          tooltip
+            .style("display", "block")
+            .style("left", `${event.pageX + 12}px`)
+            .style("top", `${event.pageY + 12}px`)
+            .text(d.id);
+          updatePanel(d);
+        })
+        .on("mouseout", () => tooltip.style("display", "none"))
+        .call(d3.drag()
+          .on("start", dragstarted)
+          .on("drag", dragged)
+          .on("end", dragended)
+        );
+
+      const simulation = d3.forceSimulation(nodes)
+        .force("link", d3.forceLink(links).id(d => d.id).distance(20).strength(0.2))
+        .force("charge", d3.forceManyBody().strength(-25))
+        .force("center", d3.forceCenter(width / 2, height / 2))
+        .force("collide", d3.forceCollide(5));
+
+      simulation.on("tick", () => {
+        link
+          .attr("x1", d => d.source.x)
+          .attr("y1", d => d.source.y)
+          .attr("x2", d => d.target.x)
+          .attr("y2", d => d.target.y);
+
+        node
+          .attr("cx", d => d.x)
+          .attr("cy", d => d.y);
+      });
+
+      function renderLegend() {
+        const mode = clusterModeEl.value;
+        const ids = Array.from(new Set(nodes.map(d => d[mode]).filter(v => v !== undefined && v !== null)))
+          .sort((a, b) => a - b);
+        const maxShow = 20;
+        const showIds = ids.slice(0, maxShow);
+        const items = showIds.map(id => {
+          const swatch = `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${color(id)};margin-right:6px;"></span>`;
+          return `${swatch}Cluster ${id}`;
+        });
+        const suffix = ids.length > maxShow ? ` + ${ids.length - maxShow} more` : "";
+        legendEl.innerHTML = `<strong>${mode}</strong> colors: ${items.join(" &nbsp; ")}${suffix}`;
+      }
+
+      function updatePanel(d) {
+        const mode = clusterModeEl.value;
+        const clusterId = d[mode];
+        const clusterInfo = summaries?.[mode]?.[String(clusterId)];
+        if (!clusterInfo) {
+          panelContent.textContent = "No cluster data available.";
+          return;
+        }
+        const movies = clusterInfo.top_movies || [];
+        const listItems = movies.slice(0, 5).map(m => {
+          const year = Number.isFinite(m.year) ? ` (${Math.round(m.year)})` : "";
+          return `<li>${m.title}${year}</li>`;
+        }).join("");
+        panelContent.innerHTML = `
+          <div><strong>Cluster ${clusterId}</strong></div>
+          <div class="panel-meta">Size: ${clusterInfo.size} actors</div>
+          <div class="panel-note">Defining movies (top 5):</div>
+          <ul class="panel-list">${listItems}</ul>
+        `;
+      }
+
+      function recolor() {
+        node.attr("fill", d => color(d[clusterModeEl.value] ?? 0));
+        renderLegend();
+      }
+
+      clusterModeEl.addEventListener("change", () => {
+        recolor();
+        panelContent.textContent = "Hover a node to see cluster highlights.";
+      });
+      renderLegend();
+
+      function dragstarted(event, d) {
+        if (!event.active) simulation.alphaTarget(0.2).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+      }
+
+      function dragged(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+      }
+
+      function dragended(event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+      }
+    }).catch(err => {
+      console.error(err);
+      metaEl.textContent = "Failed to load clustered core data.";
+    });
+  </script>
+</body>
+</html>

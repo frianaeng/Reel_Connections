@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Periphery Components</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    :root { color-scheme: light; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 0;
+      padding: 24px;
+      background: #fafafa;
+      color: #222;
+    }
+    h2 { margin: 0 0 8px; }
+    .meta { color: #666; font-size: 0.95rem; margin-bottom: 12px; }
+    .layout {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      flex-wrap: nowrap;
+    }
+    svg { border: 1px solid #ddd; background: #fff; }
+    .panel {
+      width: 320px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .panel h3 { margin: 0 0 8px; font-size: 1rem; }
+    .panel-content { font-size: 0.95rem; color: #333; }
+    .panel-list { margin: 8px 0 0; padding-left: 18px; }
+    .panel-list li { margin: 4px 0; }
+    .panel-meta { color: #666; font-size: 0.9rem; }
+    .tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(0,0,0,0.8);
+      color: #fff;
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h2>Periphery Components</h2>
+  <div id="meta" class="meta">Loading…</div>
+
+  <div class="layout">
+    <svg id="viz" width="1100" height="700"></svg>
+    <aside class="panel">
+      <h3>Component Details</h3>
+      <div id="panel-content" class="panel-content">Hover a bubble to see details.</div>
+    </aside>
+  </div>
+  <div id="tooltip" class="tooltip"></div>
+
+  <script>
+    const width = 1100;
+    const height = 700;
+    const svg = d3.select("#viz");
+    const tooltip = d3.select("#tooltip");
+    const metaEl = document.getElementById("meta");
+    const panelContent = document.getElementById("panel-content");
+
+    const color = d3.scaleOrdinal(d3.schemeTableau10);
+
+    d3.json("periphery_components.json").then(data => {
+      const components = data.components;
+      metaEl.textContent = `Periphery components: ${components.length} (core size ${data.core_size})`;
+
+      const countryKeys = Array.from(new Set(components.map(d => d.dominant_country).filter(Boolean)));
+      color.domain(countryKeys);
+
+      const root = d3.pack()
+        .size([width, height])
+        .padding(4)(d3.hierarchy({ children: components })
+        .sum(d => d.size));
+
+      const node = svg.selectAll("g")
+        .data(root.leaves())
+        .join("g")
+        .attr("transform", d => `translate(${d.x},${d.y})`);
+
+      node.append("circle")
+        .attr("r", d => d.r)
+        .attr("fill", d => color(d.data.dominant_country || "Unknown"))
+        .attr("fill-opacity", 0.8)
+        .attr("stroke", "#fff")
+        .attr("stroke-width", 1)
+        .on("mousemove", (event, d) => {
+          tooltip
+            .style("display", "block")
+            .style("left", `${event.pageX + 12}px`)
+            .style("top", `${event.pageY + 12}px`)
+            .text(`size ${d.data.size}`);
+          updatePanel(d.data);
+        })
+        .on("mouseout", () => tooltip.style("display", "none"));
+
+      node.append("title").text(d => `size ${d.data.size}`);
+
+      function updatePanel(comp) {
+        const topMovies = comp.top_movies || [];
+        const listItems = topMovies.slice(0, 5).map(m => {
+          const year = Number.isFinite(m.year) ? ` (${Math.round(m.year)})` : "";
+          return `<li>${m.title}${year}</li>`;
+        }).join("");
+        const singleton = comp.singleton_movie_title
+          ? `<div class=\"panel-meta\">Singleton movie: ${comp.singleton_movie_title}</div>`
+          : "";
+
+        panelContent.innerHTML = `
+          <div><strong>Component ${comp.id}</strong></div>
+          <div class="panel-meta">Size: ${comp.size} actors</div>
+          <div class="panel-meta">Dominant country: ${comp.dominant_country || "Unknown"}</div>
+          <div class="panel-meta">Dominant year: ${comp.dominant_year || "Unknown"}</div>
+          ${singleton}
+          <div style="margin-top:6px;">Top movies:</div>
+          <ul class="panel-list">${listItems}</ul>
+        `;
+      }
+    }).catch(err => {
+      console.error(err);
+      metaEl.textContent = "Failed to load periphery data.";
+    });
+  </script>
+</body>
+</html>

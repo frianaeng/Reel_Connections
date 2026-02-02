@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Singleton Movies</title>
+  <style>
+    :root { color-scheme: light; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 0;
+      padding: 24px;
+      background: #fafafa;
+      color: #222;
+    }
+    h2 { margin: 0 0 8px; }
+    .meta { color: #666; font-size: 0.95rem; margin-bottom: 12px; }
+    .list {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 12px;
+      max-width: 900px;
+    }
+    ol { margin: 0; padding-left: 20px; }
+    li { margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <h2>Singleton Movies (Isolated Components)</h2>
+  <div id="meta" class="meta">Loading…</div>
+  <div class="list">
+    <ol id="movie-list"></ol>
+  </div>
+
+  <script>
+    const metaEl = document.getElementById("meta");
+    const listEl = document.getElementById("movie-list");
+
+    fetch("singleton_movies.json")
+      .then(res => res.json())
+      .then(data => {
+        metaEl.textContent = `Total singleton movies: ${data.count}`;
+        data.movies.forEach(movie => {
+          const li = document.createElement("li");
+          li.textContent = `${movie.title} (id ${movie.movie_id})`;
+          listEl.appendChild(li);
+        });
+      })
+      .catch(err => {
+        console.error(err);
+        metaEl.textContent = "Failed to load singleton movies.";
+      });
+  </script>
+</body>
+</html>
