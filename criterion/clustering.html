@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Clustering</title>
+  <style>
+    :root { color-scheme: light; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 0;
+      padding: 24px;
+      background: #fafafa;
+      color: #222;
+    }
+    h2 { margin: 0 0 8px; }
+    .meta { color: #666; font-size: 0.95rem; margin-bottom: 12px; }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      margin-bottom: 12px;
+      font-size: 0.9rem;
+      color: #444;
+    }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    .swatch { width: 12px; height: 12px; border-radius: 2px; border: 1px solid #ccc; }
+    canvas { border: 1px solid #ddd; background: #fff; cursor: grab; }
+    canvas:active { cursor: grabbing; }
+    .tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(0,0,0,0.85);
+      color: #fff;
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h2>Clustering</h2>
+  <div id="meta" class="meta">Loading…</div>
+  <div id="legend" class="legend"></div>
+  <canvas id="viz" width="1200" height="700"></canvas>
+  <div id="tooltip" class="tooltip"></div>
+
+  <script>
+    const width = 1200;
+    const height = 700;
+    const canvas = document.getElementById("viz");
+    const ctx = canvas.getContext("2d");
+    const metaEl = document.getElementById("meta");
+    const legendEl = document.getElementById("legend");
+    const tooltip = document.getElementById("tooltip");
+
+    const palette = [
+      "#1F77B4", "#FF7F0E", "#2CA02C", "#D62728", "#9467BD",
+      "#8C564B", "#E377C2", "#7F7F7F", "#BCBD22", "#17BECF",
+      "#AEC7E8", "#FFBB78"
+    ];
+
+    function lerp(a, b, t) { return a + (b - a) * t; }
+
+    function yearToColor(year, minYear, maxYear) {
+      if (!year || !Number.isFinite(year) || minYear === maxYear) {
+        return "#f59e0b";
+      }
+      const t = (year - minYear) / (maxYear - minYear);
+      const r = Math.round(lerp(250, 220, t));
+      const g = Math.round(lerp(230, 38, t));
+      const b = Math.round(lerp(120, 38, t));
+      return `rgb(${r},${g},${b})`;
+    }
+
+    function draw(data, minYear, maxYear, view) {
+      ctx.clearRect(0, 0, width, height);
+
+      // cluster circles
+      ctx.lineWidth = 1.2;
+      data.clusters.forEach(cluster => {
+        ctx.strokeStyle = cluster.color;
+        ctx.beginPath();
+        ctx.arc(cluster.x * view.scale + view.tx, cluster.y * view.scale + view.ty, cluster.r * view.scale, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+
+      // nodes
+      data.nodes.forEach(n => {
+        ctx.beginPath();
+        ctx.fillStyle = n.peripheral ? "#111" : yearToColor(n.year, minYear, maxYear);
+        ctx.arc(n.x * view.scale + view.tx, n.y * view.scale + view.ty, n.radius * view.scale, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    Promise.all([
+      fetch("clustering_layout.json").then(res => res.json()),
+      fetch("cluster_summaries.json").then(res => res.json())
+    ]).then(([layout, summaries]) => {
+      const nodes = layout.nodes;
+      const clusters = layout.clusters;
+
+      // degrees for radius
+      const degrees = nodes.map(n => n.degree || 0);
+      const minDeg = Math.min(...degrees);
+      const maxDeg = Math.max(...degrees);
+      nodes.forEach(n => {
+        const t = maxDeg === minDeg ? 0.5 : (n.degree - minDeg) / (maxDeg - minDeg);
+        n.radius = lerp(2, 8, t);
+      });
+
+      // years range
+      let minYear = Infinity;
+      let maxYear = -Infinity;
+      nodes.forEach(n => {
+        if (Number.isFinite(n.year)) {
+          minYear = Math.min(minYear, n.year);
+          maxYear = Math.max(maxYear, n.year);
+        }
+      });
+      if (!Number.isFinite(minYear)) { minYear = 1900; maxYear = 2025; }
+
+      // color clusters for legend and circles (reserve black for other)
+      const orderedClusters = clusters.slice().sort((a, b) => {
+        if (a.id === "other") return 1;
+        if (b.id === "other") return -1;
+        return 0;
+      });
+      orderedClusters.forEach((c, i) => {
+        c.color = c.id === "other" ? "#111" : palette[i % palette.length];
+      });
+      clusters.splice(0, clusters.length, ...orderedClusters);
+
+      // Legend with names + summaries
+      legendEl.innerHTML = clusters.map((c) => {
+        const summary = summaries[String(c.id)];
+        const name = summary ? summary.name : `Cluster ${c.id}`;
+        const avgYear = summary?.avg_year ? `avg ${summary.avg_year}` : "avg N/A";
+        const country = summary?.dominant_country || "Unknown";
+        return `<div class="legend-item"><span class="swatch" style="background:${c.color}"></span>${name} • ${c.size} movies • ${avgYear} • ${country}</div>`;
+      }).join("");
+
+      const payload = { nodes, clusters };
+      const view = { scale: 1, tx: 0, ty: 0 };
+      draw(payload, minYear, maxYear, view);
+
+      function screenToWorld(x, y) {
+        return {
+          x: (x - view.tx) / view.scale,
+          y: (y - view.ty) / view.scale
+        };
+      }
+
+      canvas.addEventListener("mousemove", (event) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        const world = screenToWorld(x, y);
+        let hit = null;
+        for (const n of nodes) {
+          const dx = world.x - n.x;
+          const dy = world.y - n.y;
+          if (dx * dx + dy * dy <= n.radius * n.radius) {
+            hit = n;
+            break;
+          }
+        }
+        if (hit) {
+          tooltip.style.display = "block";
+          tooltip.style.left = `${event.pageX + 12}px`;
+          tooltip.style.top = `${event.pageY + 12}px`;
+          const year = Number.isFinite(hit.year) ? hit.year : "Unknown year";
+          tooltip.textContent = `${hit.title} (${year})`;
+        } else {
+          tooltip.style.display = "none";
+        }
+      });
+
+      canvas.addEventListener("mouseleave", () => {
+        tooltip.style.display = "none";
+      });
+
+      canvas.addEventListener("wheel", (event) => {
+        event.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const sx = event.clientX - rect.left;
+        const sy = event.clientY - rect.top;
+        const before = screenToWorld(sx, sy);
+        const zoom = event.deltaY < 0 ? 1.1 : 0.9;
+        const newScale = Math.max(0.2, Math.min(8, view.scale * zoom));
+        view.scale = newScale;
+        const after = screenToWorld(sx, sy);
+        view.tx += (after.x - before.x) * view.scale;
+        view.ty += (after.y - before.y) * view.scale;
+        draw(payload, minYear, maxYear, view);
+      }, { passive: false });
+
+      let isDragging = false;
+      let lastX = 0;
+      let lastY = 0;
+      canvas.addEventListener("mousedown", (event) => {
+        isDragging = true;
+        lastX = event.clientX;
+        lastY = event.clientY;
+      });
+      window.addEventListener("mouseup", () => { isDragging = false; });
+      window.addEventListener("mousemove", (event) => {
+        if (!isDragging) return;
+        const dx = event.clientX - lastX;
+        const dy = event.clientY - lastY;
+        lastX = event.clientX;
+        lastY = event.clientY;
+        view.tx += dx;
+        view.ty += dy;
+        draw(payload, minYear, maxYear, view);
+      });
+
+      canvas.addEventListener("click", (event) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        const world = screenToWorld(x, y);
+        for (const c of clusters) {
+          const dx = world.x - c.x;
+          const dy = world.y - c.y;
+          if (dx * dx + dy * dy <= c.r * c.r) {
+            window.parent.postMessage({ type: "openCluster", id: c.id }, "*");
+            return;
+          }
+        }
+      });
+
+      metaEl.textContent = `Movies: ${nodes.length} | Main clusters: ${clusters.length} | Peripheral nodes: ${nodes.filter(n => n.peripheral).length}`;
+    }).catch(err => {
+      console.error(err);
+      metaEl.textContent = "Failed to load clustering data.";
+    });
+  </script>
+</body>
+</html>

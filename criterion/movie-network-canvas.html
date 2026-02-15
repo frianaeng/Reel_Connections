@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Criterion Movie Network (Canvas)</title>
+  <style>
+    :root { color-scheme: light; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 0;
+      padding: 24px;
+      background: #fafafa;
+      color: #222;
+    }
+    h2 { margin: 0 0 8px; }
+    .meta { color: #666; font-size: 0.95rem; margin-bottom: 12px; }
+    canvas { border: 1px solid #ddd; background: #fff; cursor: grab; }
+    canvas:active { cursor: grabbing; }
+    .tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(0,0,0,0.8);
+      color: #fff;
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h2>Criterion Movie Network (Canvas)</h2>
+  <div id="meta" class="meta">Loading…</div>
+  <canvas id="viz" width="1200" height="700"></canvas>
+  <div id="tooltip" class="tooltip"></div>
+
+  <script>
+    const width = 1200;
+    const height = 700;
+    const canvas = document.getElementById("viz");
+    const ctx = canvas.getContext("2d");
+    const metaEl = document.getElementById("meta");
+    const tooltip = document.getElementById("tooltip");
+
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    function yearToColor(year, minYear, maxYear) {
+      if (!year || !Number.isFinite(year) || minYear === maxYear) {
+        return "#f59e0b"; // fallback amber
+      }
+      const t = (year - minYear) / (maxYear - minYear);
+      // yellow -> red
+      const r = Math.round(lerp(250, 220, t));
+      const g = Math.round(lerp(230, 38, t));
+      const b = Math.round(lerp(120, 38, t));
+      return `rgb(${r},${g},${b})`;
+    }
+
+    function draw(nodes, minYear, maxYear, view) {
+      ctx.clearRect(0, 0, width, height);
+      for (const n of nodes) {
+        ctx.beginPath();
+        ctx.fillStyle = yearToColor(n.year, minYear, maxYear);
+        const x = n.x * view.scale + view.tx;
+        const y = n.y * view.scale + view.ty;
+        ctx.arc(x, y, n.radius * view.scale, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    Promise.all([
+      fetch("movienetwork_unweighted.json").then(res => res.json()),
+      fetch("criterion_id_to_year.json").then(res => res.json()),
+      fetch("criterion_id_to_country.json").then(res => res.json()),
+      fetch("criterion_id_to_title.json").then(res => res.json())
+    ]).then(([data, yearMap, countryMap, titleMap]) => {
+      const nodes = data.nodes.map(d => ({
+        id: String(d.id),
+        label: d.label,
+        degree: 0
+      }));
+
+      const nodeById = new Map(nodes.map(n => [n.id, n]));
+
+      for (const link of data.links) {
+        const s = nodeById.get(String(link.source));
+        const t = nodeById.get(String(link.target));
+        if (s) s.degree += 1;
+        if (t) t.degree += 1;
+      }
+
+      // Add year data
+      let minYear = Infinity;
+      let maxYear = -Infinity;
+      for (const n of nodes) {
+        const year = yearMap[n.id] ?? yearMap[Number(n.id)];
+        n.year = Number.isFinite(year) ? Number(year) : null;
+        const country = countryMap[n.id] ?? countryMap[Number(n.id)];
+        n.country = country || "Unknown";
+        const title = titleMap[n.id] ?? titleMap[Number(n.id)];
+        n.title = title || n.label || `Movie ${n.id}`;
+        if (n.year) {
+          minYear = Math.min(minYear, n.year);
+          maxYear = Math.max(maxYear, n.year);
+        }
+      }
+      if (!Number.isFinite(minYear)) {
+        minYear = 1900;
+        maxYear = 2025;
+      }
+
+      // Scale radius by degree
+      const degrees = nodes.map(n => n.degree);
+      const minDeg = Math.min(...degrees);
+      const maxDeg = Math.max(...degrees);
+      for (const n of nodes) {
+        const t = maxDeg === minDeg ? 0.5 : (n.degree - minDeg) / (maxDeg - minDeg);
+        n.radius = lerp(2, 9, t);
+      }
+
+      // Random layout (no edges); use deterministic jitter
+      const cols = Math.ceil(Math.sqrt(nodes.length));
+      const rows = Math.ceil(nodes.length / cols);
+      const cellW = width / cols;
+      const cellH = height / rows;
+      nodes.forEach((n, i) => {
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        const jitterX = (i * 9301 + 49297) % 233280 / 233280;
+        const jitterY = (i * 233 + 111) % 233280 / 233280;
+        n.x = col * cellW + cellW * 0.5 + (jitterX - 0.5) * cellW * 0.6;
+        n.y = row * cellH + cellH * 0.5 + (jitterY - 0.5) * cellH * 0.6;
+      });
+
+      const view = { scale: 1, tx: 0, ty: 0 };
+      draw(nodes, minYear, maxYear, view);
+      metaEl.textContent = `Movies: ${nodes.length} | Years: ${minYear}–${maxYear}`;
+
+      function screenToWorld(x, y) {
+        return {
+          x: (x - view.tx) / view.scale,
+          y: (y - view.ty) / view.scale
+        };
+      }
+
+      function findNode(worldX, worldY) {
+        let hit = null;
+        for (const n of nodes) {
+          const dx = worldX - n.x;
+          const dy = worldY - n.y;
+          const r = n.radius;
+          if (dx * dx + dy * dy <= r * r) {
+            hit = n;
+            break;
+          }
+        }
+        return hit;
+      }
+
+      canvas.addEventListener("mousemove", (event) => {
+        const rect = canvas.getBoundingClientRect();
+        const sx = event.clientX - rect.left;
+        const sy = event.clientY - rect.top;
+        const world = screenToWorld(sx, sy);
+        const hit = findNode(world.x, world.y);
+        if (hit) {
+          tooltip.style.display = "block";
+          tooltip.style.left = `${event.pageX + 12}px`;
+          tooltip.style.top = `${event.pageY + 12}px`;
+          tooltip.textContent = `${hit.title} — ${hit.country}`;
+        } else {
+          tooltip.style.display = "none";
+        }
+      });
+
+      canvas.addEventListener("mouseleave", () => {
+        tooltip.style.display = "none";
+      });
+
+      canvas.addEventListener("wheel", (event) => {
+        event.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const sx = event.clientX - rect.left;
+        const sy = event.clientY - rect.top;
+        const before = screenToWorld(sx, sy);
+        const zoom = event.deltaY < 0 ? 1.1 : 0.9;
+        const newScale = Math.max(0.2, Math.min(8, view.scale * zoom));
+        view.scale = newScale;
+        const after = screenToWorld(sx, sy);
+        view.tx += (after.x - before.x) * view.scale;
+        view.ty += (after.y - before.y) * view.scale;
+        draw(nodes, minYear, maxYear, view);
+      }, { passive: false });
+
+      let isDragging = false;
+      let lastX = 0;
+      let lastY = 0;
+      canvas.addEventListener("mousedown", (event) => {
+        isDragging = true;
+        lastX = event.clientX;
+        lastY = event.clientY;
+      });
+      window.addEventListener("mouseup", () => { isDragging = false; });
+      window.addEventListener("mousemove", (event) => {
+        if (!isDragging) return;
+        const dx = event.clientX - lastX;
+        const dy = event.clientY - lastY;
+        lastX = event.clientX;
+        lastY = event.clientY;
+        view.tx += dx;
+        view.ty += dy;
+        draw(nodes, minYear, maxYear, view);
+      });
+    }).catch(err => {
+      console.error(err);
+      metaEl.textContent = "Failed to load movie network.";
+    });
+  </script>
+</body>
+</html>

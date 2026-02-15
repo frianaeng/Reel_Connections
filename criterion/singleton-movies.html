@@ -42,7 +42,9 @@
         metaEl.textContent = `Total singleton movies: ${data.count}`;
         data.movies.forEach(movie => {
           const li = document.createElement("li");
-          li.textContent = `${movie.title} (id ${movie.movie_id})`;
+          const year = Number.isFinite(movie.year) ? ` (${movie.year})` : "";
+          const country = movie.country || "Unknown";
+          li.textContent = `${movie.title}${year} — ${country} (id ${movie.movie_id})`;
           listEl.appendChild(li);
         });
       })

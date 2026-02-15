@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Reel Connections — Home</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    :root { color-scheme: light; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 0;
+      padding: 24px;
+      background: #fafafa;
+      color: #222;
+    }
+    h2 { margin: 0 0 8px; }
+    .meta { color: #666; font-size: 0.95rem; margin-bottom: 12px; }
+    .summary {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+      max-width: 1000px;
+    }
+    .summary p { margin: 6px 0; }
+    svg { border: 1px solid #ddd; background: #fff; }
+    .histogram-wrap {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    .legend {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 10px;
+      min-width: 200px;
+      font-size: 0.9rem;
+      color: #444;
+    }
+    .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .swatch { width: 12px; height: 12px; border-radius: 2px; border: 1px solid #ccc; }
+  </style>
+</head>
+<body>
+  <h2>Overview</h2>
+  <div class="summary">
+    <p>This site maps the Criterion Collection into a movie-to-movie network where edges represent shared actors. We cluster the network with Leiden and focus on clusters that contain 10 or more films, which provides a stable, interpretable view of the largest communities.</p>
+    <p>Key results: there are multiple large clusters with distinct regional and temporal signatures. The clustering view places smaller components and degree-0 titles around the periphery to keep the main communities readable.</p>
+    <p>Use the <strong>Clustering</strong> tab to explore the full map, and <strong>Clusters</strong> to dive into each community’s network, timeline, and key people.</p>
+  </div>
+
+  <div id="meta" class="meta">Loading…</div>
+  <div class="histogram-wrap">
+    <svg id="histogram" width="900" height="320"></svg>
+    <div id="legend" class="legend"></div>
+  </div>
+
+  <script>
+    const histogramSvg = d3.select("#histogram");
+    const metaEl = document.getElementById("meta");
+    const legendEl = document.getElementById("legend");
+
+    fetch("home_histogram.json")
+      .then(res => res.json())
+      .then(data => {
+        const margin = { top: 20, right: 20, bottom: 40, left: 60 };
+        const w = 900 - margin.left - margin.right;
+        const h = 320 - margin.top - margin.bottom;
+        const svg = histogramSvg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+        const bins = data.bins;
+        const regions = data.regions;
+        const rows = data.rows;
+
+        const stack = d3.stack().keys(regions);
+        const series = stack(rows);
+
+        const x = d3.scaleBand().domain(bins).range([0, w]).padding(0.1);
+        const y = d3.scaleLinear()
+          .domain([0, d3.max(series, s => d3.max(s, d => d[1])) || 1])
+          .nice()
+          .range([h, 0]);
+
+        const color = d3.scaleOrdinal()
+          .domain(regions)
+          .range([
+            "#4C78A8", "#F58518", "#54A24B", "#E45756", "#72B7B2", "#B279A2", "#FF9DA6",
+            "#9D755D", "#BAB0AC", "#EDC949", "#59A14F", "#8CD17D", "#FFBF79", "#B07AA1", "#A0A0A0"
+          ]);
+
+        svg.append("g").selectAll("g")
+          .data(series)
+          .join("g")
+          .attr("fill", d => color(d.key))
+          .selectAll("rect")
+          .data(d => d)
+          .join("rect")
+          .attr("x", d => x(d.data.bin))
+          .attr("y", d => y(d[1]))
+          .attr("height", d => y(d[0]) - y(d[1]))
+          .attr("width", x.bandwidth());
+
+        svg.append("g").attr("transform", `translate(0,${h})`)
+          .call(d3.axisBottom(x).tickValues(bins.filter((_, i) => i % 2 === 0)))
+          .selectAll("text")
+          .attr("transform", "rotate(-35)")
+          .style("text-anchor", "end");
+
+        svg.append("g").call(d3.axisLeft(y));
+
+        legendEl.innerHTML = regions.map(r => (
+          `<div class="legend-item"><span class="swatch" style="background:${color(r)}"></span>${r}</div>`
+        )).join("");
+
+        metaEl.textContent = `Movies by year and region (5-year bins)`;
+      })
+      .catch(err => {
+        console.error(err);
+        metaEl.textContent = "Failed to load histogram.";
+      });
+  </script>
+</body>
+</html>

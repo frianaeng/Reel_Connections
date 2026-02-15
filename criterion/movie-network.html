@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Criterion Movie Network</title>
+  <style>
+    :root { color-scheme: light; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 0;
+      padding: 24px;
+      background: #fafafa;
+      color: #222;
+    }
+    h2 { margin: 0 0 8px; }
+    .meta { color: #666; font-size: 0.95rem; margin-bottom: 12px; }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      margin-bottom: 12px;
+      font-size: 0.9rem;
+      color: #444;
+    }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    .swatch { width: 12px; height: 12px; border-radius: 2px; border: 1px solid #ccc; }
+    canvas { border: 1px solid #ddd; background: #fff; }
+    .tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(0,0,0,0.85);
+      color: #fff;
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h2>Criterion Movie Network (Leiden Clusters)</h2>
+  <div id="meta" class="meta">Loading…</div>
+  <div id="legend" class="legend"></div>
+  <canvas id="viz" width="1200" height="700"></canvas>
+  <div id="tooltip" class="tooltip"></div>
+
+  <script>
+    const width = 1200;
+    const height = 700;
+    const canvas = document.getElementById("viz");
+    const ctx = canvas.getContext("2d");
+    const metaEl = document.getElementById("meta");
+    const legendEl = document.getElementById("legend");
+    const tooltip = document.getElementById("tooltip");
+
+    function lerp(a, b, t) { return a + (b - a) * t; }
+
+    function yearToColor(year, minYear, maxYear) {
+      if (!year || !Number.isFinite(year) || minYear === maxYear) {
+        return "#f59e0b";
+      }
+      const t = (year - minYear) / (maxYear - minYear);
+      const r = Math.round(lerp(250, 220, t));
+      const g = Math.round(lerp(230, 38, t));
+      const b = Math.round(lerp(120, 38, t));
+      return `rgb(${r},${g},${b})`;
+    }
+
+    function draw(data, minYear, maxYear, view) {
+      ctx.clearRect(0, 0, width, height);
+
+      // cluster circles
+      ctx.lineWidth = 1.2;
+      data.clusters.forEach(cluster => {
+        ctx.strokeStyle = cluster.color;
+        ctx.beginPath();
+        ctx.arc(cluster.x * view.scale + view.tx, cluster.y * view.scale + view.ty, cluster.r * view.scale, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+
+      // nodes
+      data.nodes.forEach(n => {
+        ctx.beginPath();
+        ctx.fillStyle = yearToColor(n.year, minYear, maxYear);
+        ctx.arc(n.x * view.scale + view.tx, n.y * view.scale + view.ty, n.radius * view.scale, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    fetch("movie_network_leiden_layout.json")
+      .then(res => res.json())
+      .then(data => {
+        const clusters = data.clusters;
+        const nodes = data.nodes;
+
+        // degrees for radius
+        const degrees = nodes.map(n => n.degree);
+        const minDeg = Math.min(...degrees);
+        const maxDeg = Math.max(...degrees);
+        nodes.forEach(n => {
+          const t = maxDeg === minDeg ? 0.5 : (n.degree - minDeg) / (maxDeg - minDeg);
+          n.radius = lerp(2, 8, t);
+        });
+
+        // years range
+        let minYear = Infinity;
+        let maxYear = -Infinity;
+        nodes.forEach(n => {
+          if (Number.isFinite(n.year)) {
+            minYear = Math.min(minYear, n.year);
+            maxYear = Math.max(maxYear, n.year);
+          }
+        });
+        if (!Number.isFinite(minYear)) { minYear = 1900; maxYear = 2025; }
+
+        // color clusters for legend
+        const palette = [
+          "#1F77B4", "#FF7F0E", "#2CA02C", "#D62728", "#9467BD",
+          "#8C564B", "#E377C2", "#7F7F7F", "#BCBD22", "#17BECF",
+          "#AEC7E8", "#FFBB78"
+        ];
+
+        const clusterMap = new Map();
+        clusters.forEach((c, i) => {
+          c.color = palette[i % palette.length];
+          clusterMap.set(c.id, c);
+        });
+
+        // Legend
+        const clusterCounts = new Map();
+        const clusterYearSums = new Map();
+        const clusterYearCounts = new Map();
+        const clusterCountryCounts = new Map();
+
+        nodes.forEach(n => {
+          const count = clusterCounts.get(n.cluster) || 0;
+          clusterCounts.set(n.cluster, count + 1);
+
+          if (Number.isFinite(n.year)) {
+            clusterYearSums.set(n.cluster, (clusterYearSums.get(n.cluster) || 0) + n.year);
+            clusterYearCounts.set(n.cluster, (clusterYearCounts.get(n.cluster) || 0) + 1);
+          }
+
+          const country = n.country || "Unknown";
+          if (!clusterCountryCounts.has(n.cluster)) clusterCountryCounts.set(n.cluster, new Map());
+          const countryMap = clusterCountryCounts.get(n.cluster);
+          countryMap.set(country, (countryMap.get(country) || 0) + 1);
+        });
+
+        function getDominantCountry(clusterId) {
+          const countryMap = clusterCountryCounts.get(clusterId);
+          if (!countryMap) return "Unknown";
+          let best = "Unknown";
+          let bestCount = 0;
+          for (const [country, count] of countryMap.entries()) {
+            if (count > bestCount) {
+              best = country;
+              bestCount = count;
+            }
+          }
+          return best;
+        }
+
+        legendEl.innerHTML = clusters.map((c) => {
+          const count = clusterCounts.get(c.id) || 0;
+          const yearSum = clusterYearSums.get(c.id) || 0;
+          const yearCount = clusterYearCounts.get(c.id) || 0;
+          const avgYear = yearCount ? Math.round(yearSum / yearCount) : "N/A";
+          const dominantCountry = getDominantCountry(c.id);
+          return `<div class="legend-item"><span class="swatch" style="background:${c.color}"></span>${count} movies • avg year ${avgYear} • ${dominantCountry}</div>`;
+        }).join("");
+
+        const payload = { nodes, clusters };
+        const view = { scale: 1, tx: 0, ty: 0 };
+        draw(payload, minYear, maxYear, view);
+
+        function screenToWorld(x, y) {
+          return {
+            x: (x - view.tx) / view.scale,
+            y: (y - view.ty) / view.scale
+          };
+        }
+
+        canvas.addEventListener("mousemove", (event) => {
+          const rect = canvas.getBoundingClientRect();
+          const x = event.clientX - rect.left;
+          const y = event.clientY - rect.top;
+          let hit = null;
+          for (const n of nodes) {
+            const world = screenToWorld(x, y);
+            const dx = world.x - n.x;
+            const dy = world.y - n.y;
+            if (dx * dx + dy * dy <= n.radius * n.radius) {
+              hit = n;
+              break;
+            }
+          }
+          if (hit) {
+            tooltip.style.display = "block";
+            tooltip.style.left = `${event.pageX + 12}px`;
+            tooltip.style.top = `${event.pageY + 12}px`;
+            const year = Number.isFinite(hit.year) ? hit.year : "Unknown year";
+            tooltip.textContent = `${hit.title} (${year})`;
+          } else {
+            tooltip.style.display = "none";
+          }
+        });
+
+        canvas.addEventListener("mouseleave", () => {
+          tooltip.style.display = "none";
+        });
+
+        canvas.addEventListener("wheel", (event) => {
+          event.preventDefault();
+          const rect = canvas.getBoundingClientRect();
+          const sx = event.clientX - rect.left;
+          const sy = event.clientY - rect.top;
+          const before = screenToWorld(sx, sy);
+          const zoom = event.deltaY < 0 ? 1.1 : 0.9;
+          const newScale = Math.max(0.2, Math.min(8, view.scale * zoom));
+          view.scale = newScale;
+          const after = screenToWorld(sx, sy);
+          view.tx += (after.x - before.x) * view.scale;
+          view.ty += (after.y - before.y) * view.scale;
+          draw(payload, minYear, maxYear, view);
+        }, { passive: false });
+
+        let isDragging = false;
+        let lastX = 0;
+        let lastY = 0;
+        canvas.addEventListener("mousedown", (event) => {
+          isDragging = true;
+          lastX = event.clientX;
+          lastY = event.clientY;
+        });
+        window.addEventListener("mouseup", () => { isDragging = false; });
+        window.addEventListener("mousemove", (event) => {
+          if (!isDragging) return;
+          const dx = event.clientX - lastX;
+          const dy = event.clientY - lastY;
+          lastX = event.clientX;
+          lastY = event.clientY;
+          view.tx += dx;
+          view.ty += dy;
+          draw(payload, minYear, maxYear, view);
+        });
+
+        metaEl.textContent = `Movies: ${nodes.length} | Clusters: ${clusters.length} | Years: ${minYear}–${maxYear}`;
+      })
+      .catch(err => {
+        console.error(err);
+        metaEl.textContent = "Failed to load movie network.";
+      });
+  </script>
+</body>
+</html>

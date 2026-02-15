@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Clusters</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    :root { color-scheme: light; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 0;
+      padding: 24px;
+      background: #fafafa;
+      color: #222;
+    }
+    h2 { margin: 0 0 8px; }
+    .meta { color: #666; font-size: 0.95rem; margin-bottom: 12px; }
+    .controls { margin-bottom: 12px; }
+    select {
+      padding: 6px 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #fff;
+    }
+    .layout {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    svg { border: 1px solid #ddd; background: #fff; }
+    .panel {
+      width: 320px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .panel h3 { margin: 0 0 6px; }
+    .panel-meta { color: #666; font-size: 0.9rem; }
+    ul { margin: 6px 0 0; padding-left: 18px; }
+  </style>
+</head>
+<body>
+  <h2>Clusters</h2>
+  <div class="controls">
+    <label for="cluster-select">Select cluster:</label>
+    <select id="cluster-select"></select>
+  </div>
+  <div id="meta" class="meta" style="display:none;"></div>
+  <div id="cluster-highlight" class="meta" style="display:none; max-width: 1100px; margin-bottom: 12px;"></div>
+
+  <div class="layout">
+    <svg id="network" width="800" height="520"></svg>
+    <div class="panel">
+      <h3 id="cluster-name">Cluster</h3>
+      <div id="cluster-meta" class="panel-meta"></div>
+      <p id="cluster-summary" style="display:none;"></p>
+      <div><strong>Top directors</strong></div>
+      <ul id="director-list"></ul>
+      <div style="margin-top:8px;"><strong>Top actors</strong></div>
+      <ul id="actor-list"></ul>
+      <div style="margin-top:8px;"><strong>Top movies</strong></div>
+      <ul id="movie-list"></ul>
+    </div>
+  </div>
+
+  <div style="margin-top:16px;">
+    <div id="histogram-legend" class="meta"></div>
+    <svg id="histogram" width="1200" height="260"></svg>
+  </div>
+
+  <script>
+    const networkSvg = d3.select("#network");
+    const histogramSvg = d3.select("#histogram");
+    const selectEl = document.getElementById("cluster-select");
+    const metaEl = document.getElementById("meta");
+    const nameEl = document.getElementById("cluster-name");
+    const clusterMetaEl = document.getElementById("cluster-meta");
+    const summaryEl = document.getElementById("cluster-summary");
+    const highlightEl = document.getElementById("cluster-highlight");
+    const directorList = document.getElementById("director-list");
+    const actorList = document.getElementById("actor-list");
+    const movieList = document.getElementById("movie-list");
+    const histogramLegend = document.getElementById("histogram-legend");
+
+    const width = 800;
+    const height = 520;
+
+    const regionBuckets = {
+      "United States": "America",
+      "USA": "America",
+      "Canada": "America",
+      "Mexico": "America",
+      "France": "France",
+      "Italy": "Italy",
+      "Japan": "Japan",
+      "India": "India",
+      "United Kingdom": "UK",
+      "England": "UK",
+      "Scotland": "UK",
+      "Ireland": "UK",
+      "Germany": "Germany",
+      "Soviet Union": "Eastern Europe",
+      "Russia": "Eastern Europe",
+      "Czechoslovakia": "Eastern Europe",
+      "Poland": "Eastern Europe",
+      "Hungary": "Eastern Europe",
+      "Romania": "Eastern Europe",
+      "Bulgaria": "Eastern Europe",
+      "China": "Asia",
+      "South Korea": "Asia",
+      "Korea": "Asia",
+      "Taiwan": "Asia",
+      "Hong Kong": "Asia",
+      "Iran": "Middle East",
+      "Turkey": "Middle East",
+      "Israel": "Middle East",
+      "Senegal": "Africa",
+      "Algeria": "Africa",
+      "Morocco": "Africa",
+      "Tunisia": "Africa",
+      "Portugal": "Iberia",
+      "Spain": "Iberia",
+      "Brazil": "Latin America",
+      "Argentina": "Latin America",
+      "Chile": "Latin America",
+      "Australia": "Oceania",
+      "New Zealand": "Oceania"
+    };
+
+    const regionColors = d3.scaleOrdinal()
+      .domain([
+        "America", "France", "Italy", "Japan", "India", "UK", "Germany",
+        "Eastern Europe", "Asia", "Middle East", "Africa", "Iberia", "Latin America", "Oceania", "Other"
+      ])
+      .range([
+        "#4C78A8", "#F58518", "#54A24B", "#E45756", "#72B7B2", "#B279A2", "#FF9DA6",
+        "#9D755D", "#BAB0AC", "#EDC949", "#59A14F", "#8CD17D", "#FFBF79", "#B07AA1", "#A0A0A0"
+      ]);
+
+    function bucketCountry(country) {
+      if (!country) return "Other";
+      const norm = country.replace(/,.*$/, "").trim();
+      return regionBuckets[norm] || "Other";
+    }
+
+    function binYear(year) {
+      if (!Number.isFinite(year)) return null;
+      const start = Math.floor((year - 1920) / 5) * 5 + 1920;
+      return `${start}-${start + 5}`;
+    }
+
+    function renderNetwork(cluster) {
+      networkSvg.selectAll("*").remove();
+      const nodes = cluster.nodes.map(d => ({...d}));
+      const links = cluster.links.map(d => ({...d}));
+
+      const link = networkSvg.append("g")
+        .selectAll("line")
+        .data(links)
+        .join("line")
+        .attr("stroke", "#bbb")
+        .attr("stroke-opacity", 0.3);
+
+      const node = networkSvg.append("g")
+        .selectAll("circle")
+        .data(nodes)
+        .join("circle")
+        .attr("r", 3)
+        .attr("fill", d => regionColors(bucketCountry(d.country)))
+        .append("title")
+        .text(d => d.title);
+
+      const simulation = d3.forceSimulation(nodes)
+        .force("link", d3.forceLink(links).id(d => d.id).distance(25).strength(0.2))
+        .force("charge", d3.forceManyBody().strength(-25))
+        .force("center", d3.forceCenter(width / 2, height / 2))
+        .force("collide", d3.forceCollide(4));
+
+      simulation.on("tick", () => {
+        link
+          .attr("x1", d => d.source.x)
+          .attr("y1", d => d.source.y)
+          .attr("x2", d => d.target.x)
+          .attr("y2", d => d.target.y);
+
+        networkSvg.selectAll("circle")
+          .attr("cx", d => d.x)
+          .attr("cy", d => d.y);
+      });
+    }
+
+    function renderHistogram(cluster) {
+      histogramSvg.selectAll("*").remove();
+      const margin = { top: 20, right: 20, bottom: 30, left: 50 };
+      const w = 1200 - margin.left - margin.right;
+      const h = 260 - margin.top - margin.bottom;
+
+      const svg = histogramSvg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+      const rows = cluster.nodes.map(n => ({
+        yearBin: binYear(n.year),
+        region: bucketCountry(n.country)
+      })).filter(d => d.yearBin);
+
+      const bins = Array.from(new Set(rows.map(d => d.yearBin))).sort((a, b) => parseInt(a) - parseInt(b));
+      const regions = Array.from(new Set(rows.map(d => d.region)));
+
+      const stacked = d3.rollup(rows, v => v.length, d => d.yearBin, d => d.region);
+      const data = bins.map(bin => {
+        const entry = { bin };
+        regions.forEach(r => { entry[r] = stacked.get(bin)?.get(r) || 0; });
+        return entry;
+      });
+
+      const stack = d3.stack().keys(regions);
+      const series = stack(data);
+
+      const x = d3.scaleBand().domain(bins).range([0, w]).padding(0.1);
+      const y = d3.scaleLinear()
+        .domain([0, d3.max(series, s => d3.max(s, d => d[1])) || 1])
+        .nice()
+        .range([h, 0]);
+
+      svg.append("g").selectAll("g")
+        .data(series)
+        .join("g")
+        .attr("fill", d => regionColors(d.key))
+        .selectAll("rect")
+        .data(d => d)
+        .join("rect")
+        .attr("x", d => x(d.data.bin))
+        .attr("y", d => y(d[1]))
+        .attr("height", d => y(d[0]) - y(d[1]))
+        .attr("width", x.bandwidth());
+
+      svg.append("g").attr("transform", `translate(0,${h})`).call(d3.axisBottom(x).tickValues(bins.filter((_, i) => i % 2 === 0)));
+      svg.append("g").call(d3.axisLeft(y));
+
+      histogramLegend.innerHTML = regions.map(r => (
+        `<span style="display:inline-flex;align-items:center;gap:6px;margin-right:12px;margin-bottom:6px;">
+          <span style="width:10px;height:10px;display:inline-block;background:${regionColors(r)};border:1px solid #ccc;border-radius:2px;"></span>${r}
+        </span>`
+      )).join("");
+    }
+
+    fetch("cluster_details.json")
+      .then(res => res.json())
+      .then(data => {
+        const entries = Object.values(data).sort((a, b) => b.summary.size - a.summary.size);
+        entries.forEach(entry => {
+          const option = document.createElement("option");
+          option.value = entry.summary.id;
+          option.textContent = entry.summary.name;
+          selectEl.appendChild(option);
+        });
+
+        function update() {
+          const id = selectEl.value;
+          const cluster = data[id];
+          if (!cluster) return;
+
+          if (cluster.summary.name === "The American Auteur Canon") {
+            highlightEl.style.display = "block";
+            highlightEl.innerHTML = "The American Auteur Canon refers to a tradition of U.S. filmmaking in which the director\u2019s personal vision shapes the film more strongly than commercial formula or studio expectations. Emerging in the late 1950s with independent works like Shadows and solidifying during the New Hollywood era with films such as Easy Rider and Five Easy Pieces, this lineage continues into contemporary cinema with works like No Country for Old Men and Killers of the Flower Moon. Across decades, what unifies these films is not genre but sensibility. They treat America less as a triumphant spectacle and more as a landscape of moral uncertainty and psychological tension.<br><br>Thematically, these films repeatedly return to alienation, disillusionment, and the instability of identity. Their protagonists are rarely conventional heroes; instead, they are drifters, antiheroes, morally compromised strivers, or emotionally isolated figures navigating institutions that appear indifferent or corrupt. The American Dream often appears frayed or hollow, replaced by ambiguity about power, masculinity, success, and belonging. Rather than offering moral clarity, these films linger in ethical gray zones, allowing contradictions to remain unresolved.<br><br>Certain motifs recur with striking consistency: highways stretching into emptiness, anonymous urban nightscapes, fragile or deteriorating relationships, characters observing one another with suspicion or longing. There is often a quiet emphasis on watching and being watched, whether through media, social systems, or interpersonal scrutiny. Silence and restraint matter as much as dialogue; emotional repression frequently drives the narrative tension.<br><br>Artistically, the canon favors deliberate pacing, location shooting, textured realism, and psychologically nuanced performances. Even when the storytelling becomes stylized or surreal, the emphasis remains on interiority rather than spectacle. Endings tend to resist tidy resolution, reinforcing the sense that the cultural and moral questions posed by the film extend beyond its runtime. Ultimately, the American Auteur Canon represents cinema as authorship: films shaped by distinctive creative voices, unified by their sustained interrogation of American identity, myth, and moral structure.";
+          } else {
+            highlightEl.style.display = "none";
+            highlightEl.textContent = "";
+          }
+
+          nameEl.textContent = cluster.summary.name;
+          clusterMetaEl.textContent = `Cluster ${cluster.summary.id} • ${cluster.summary.size} movies • avg year ${cluster.summary.avg_year || "N/A"} • ${cluster.summary.dominant_country}`;
+          summaryEl.textContent = cluster.summary.summary;
+
+          directorList.innerHTML = "";
+          cluster.top_directors.forEach(([name, count]) => {
+            const li = document.createElement("li");
+            li.textContent = `${name} (${count})`;
+            directorList.appendChild(li);
+          });
+
+          actorList.innerHTML = "";
+          cluster.top_actors.forEach(([name, count]) => {
+            const li = document.createElement("li");
+            li.textContent = `${name} (${count})`;
+            actorList.appendChild(li);
+          });
+
+          movieList.innerHTML = "";
+          cluster.summary.top_movies.forEach(movie => {
+            const li = document.createElement("li");
+            const year = movie.year ? ` (${movie.year})` : "";
+            li.textContent = `${movie.title}${year}`;
+            movieList.appendChild(li);
+          });
+
+          renderNetwork(cluster);
+          renderHistogram(cluster);
+        }
+
+        selectEl.addEventListener("change", update);
+        selectEl.value = entries[0]?.summary.id;
+        update();
+
+        metaEl.textContent = `Clusters: ${entries.length}`;
+      })
+      .catch(err => {
+        console.error(err);
+        metaEl.textContent = "Failed to load cluster details.";
+      });
+  </script>
+</body>
+</html>

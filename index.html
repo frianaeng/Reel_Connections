@@ -8,82 +8,41 @@
 <body>
 
   <header>
-    <h1>Network Visualizations</h1>
+    <h1>Reel Connections: An Exploration of Classic Cinema Through the Criterion Collection</h1>
     <nav>
       <button class="tab active" data-tab="home">Home</button>
-      <button class="tab" data-tab="criterion">Criterion Actor Network</button>
-      <button class="tab" data-tab="bacon">Kevin Bacon Game</button>
-      <button class="tab" data-tab="core-clustered">Core (Clustered)</button>
-      <button class="tab" data-tab="singletons">Singleton Movies</button>
-      <button class="tab" data-tab="periphery">Periphery</button>
-      <button class="tab" data-tab="grand">Grand Visualization</button>
+      <button class="tab" data-tab="clustering">Clustering</button>
+      <button class="tab" data-tab="clusters">Clusters</button>
     </nav>
   </header>
 
   <main>
     <section id="home" class="tab-content active">
-      <p>
-        This site collects interactive network visualizations.
-        The Criterion Actor Network explores co-starring structure
-        across the Criterion Collection.
-      </p>
-    </section>
-
-    <section id="criterion" class="tab-content">
       <iframe
-        src="criterion/actNet.html"
-        width="100%"
-        height="700"
-        style="border: none;"
-        loading="lazy">
-      </iframe>
-    </section>
-
-    <section id="bacon" class="tab-content">
-      <iframe
-        src="criterion/kevin-bacon.html"
-        width="100%"
-        height="700"
-        style="border: none;"
-        loading="lazy">
-      </iframe>
-    </section>
-
-    <section id="core-clustered" class="tab-content">
-      <iframe
-        src="criterion/core-clustered.html"
-        width="100%"
-        height="700"
-        style="border: none;"
-        loading="lazy">
-      </iframe>
-    </section>
-
-    <section id="singletons" class="tab-content">
-      <iframe
-        src="criterion/singleton-movies.html"
-        width="100%"
-        height="700"
-        style="border: none;"
-        loading="lazy">
-      </iframe>
-    </section>
-
-    <section id="periphery" class="tab-content">
-      <iframe
-        src="criterion/periphery.html"
-        width="100%"
-        height="700"
-        style="border: none;"
-        loading="lazy">
-      </iframe>
-    </section>
-
-    <section id="grand" class="tab-content">
-      <iframe
-        src="criterion/grand-visualization.html"
+        src="criterion/home.html"
         width="100%"
         height="760"
+        style="border: none;"
+        loading="lazy">
+      </iframe>
+    </section>
+
+    <section id="clustering" class="tab-content">
+      <iframe
+        src="criterion/clustering.html"
+        width="100%"
+        height="700"
+        style="border: none;"
+        loading="lazy">
+      </iframe>
+    </section>
+
+    <section id="clusters" class="tab-content">
+      <iframe
+        id="clusters-frame"
+        src="criterion/clusters.html"
+        width="100%"
+        height="700"
         style="border: none;"
         loading="lazy">
       </iframe>
