@@ -245,7 +245,7 @@
       )).join("");
     }
 
-    fetch("cluster_details.json")
+    fetch("cluster_details.json?v=6")
       .then(res => res.json())
       .then(data => {
         const entries = Object.values(data).sort((a, b) => b.summary.size - a.summary.size);
