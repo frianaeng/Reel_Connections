@@ -1,6 +1,7 @@
 const tabs = document.querySelectorAll(".tab");
 const sections = document.querySelectorAll(".tab-content");
 const clustersFrame = document.getElementById("clusters-frame");
+const methodologyFrame = document.getElementById("methodology-frame");
 
 function activateTab(target) {
   tabs.forEach(t => t.classList.remove("active"));
@@ -15,18 +16,27 @@ function activateTab(target) {
 tabs.forEach(tab => {
   tab.addEventListener("click", () => {
     const target = tab.dataset.tab;
-
     activateTab(target);
   });
 });
 
 window.addEventListener("message", (event) => {
   const data = event.data;
-  if (!data || data.type !== "openCluster") return;
+  if (!data) return;
 
-  activateTab("clusters");
-  if (clustersFrame) {
-    const base = clustersFrame.getAttribute("src").split("#")[0];
-    clustersFrame.setAttribute("src", `${base}#cluster-${data.id}`);
+  if (data.type === "openCluster") {
+    activateTab("clusters");
+    if (clustersFrame) {
+      const base = clustersFrame.getAttribute("src").split("#")[0];
+      clustersFrame.setAttribute("src", `${base}#cluster-${data.id}`);
+    }
+    return;
+  }
+
+  if (data.type === "setHeight" && data.frame === "methodology" && methodologyFrame) {
+    const nextHeight = Number(data.height);
+    if (!Number.isNaN(nextHeight) && nextHeight > 0) {
+      methodologyFrame.style.height = `${nextHeight + 24}px`;
+    }
   }
 });

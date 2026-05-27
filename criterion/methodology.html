@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Methodology</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #fcfaf6;
+      --ink: #1d1d1d;
+      --muted: #5b5b5b;
+      --line: #ddd2c2;
+      --card: #fffdf9;
+      --accent: #9c755f;
+      --accent-soft: #efe0d0;
+      --accent-2: #5a8abf;
+      --overlay: rgba(18, 18, 18, 0.82);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      background: linear-gradient(180deg, #f6efe4 0%, var(--paper) 220px);
+      color: var(--ink);
+      line-height: 1.6;
+    }
+
+    .page {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 36px 28px 56px;
+    }
+
+    .hero {
+      margin-bottom: 28px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1, h2, h3 {
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      line-height: 1.15;
+      margin: 0;
+      color: #111;
+    }
+
+    h1 {
+      font-size: 2.35rem;
+      letter-spacing: -0.03em;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      font-size: 1.45rem;
+      margin-bottom: 10px;
+    }
+
+    h3 {
+      font-size: 1.02rem;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--accent);
+    }
+
+    p {
+      margin: 0 0 12px;
+      font-size: 1rem;
+    }
+
+    .lede {
+      max-width: 920px;
+      font-size: 1.08rem;
+      color: #2f2f2f;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.3fr 0.7fr;
+      gap: 18px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px 18px 16px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .pill {
+      background: var(--accent-soft);
+      color: #553b2e;
+      border-radius: 999px;
+      padding: 6px 12px;
+      font: 600 0.9rem "Helvetica Neue", Helvetica, Arial, sans-serif;
+    }
+
+    .stage-list,
+    .notes-list,
+    .category-list {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .stage-list li,
+    .notes-list li,
+    .category-list li {
+      margin: 0 0 8px;
+    }
+
+    .sankey-wrap {
+      margin: 24px 0 20px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fff;
+      padding: 12px;
+      overflow-x: auto;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);
+    }
+
+    .sankey-wrap img {
+      width: 1400px;
+      max-width: none;
+      height: auto;
+      display: block;
+    }
+
+    .section {
+      margin-top: 28px;
+    }
+
+    .section + .section {
+      padding-top: 22px;
+      border-top: 1px solid var(--line);
+    }
+
+    .columns {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .callout {
+      border-left: 4px solid var(--accent-2);
+      background: #eef4fb;
+      padding: 12px 14px;
+      border-radius: 8px;
+      margin: 10px 0 0;
+      color: #263746;
+    }
+
+    code {
+      background: #f3ede6;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 0.92em;
+    }
+
+    @media (max-width: 980px) {
+      .grid,
+      .columns {
+        grid-template-columns: 1fr;
+      }
+
+      .page {
+        padding: 24px 16px 40px;
+      }
+
+      .sankey-wrap {
+        padding: 10px;
+      }
+
+      .sankey-wrap img {
+        width: 1200px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <h1>Methodology</h1>
+      <p class="lede">This project starts with the raw Criterion catalog and turns it into a reproducible, film-level dataset of IMDb-verified feature-length movie records. The main challenge is that the Criterion catalog mixes standalone films with box sets, anthologies, shorts, television material, missing metadata, and ambiguous titles. The methodology below explains how those records were standardized, matched, reviewed, and split into final outcome categories.</p>
+      <p class="meta">Quantity measured throughout this page: title rows / records, not deduplicated unique films. Collection expansion increases row counts because one collection can unpack into multiple title rows.</p>
+    </header>
+
+    <section class="grid">
+      <div class="card">
+        <h2>Project Goal</h2>
+        <p>The goal is to explain, step by step, how the raw Criterion dataset became a cleaned dataset of IMDb-verified feature-length movie records. The process is designed to be reproducible rather than ad hoc: every major transformation is named, every ambiguous case has a review path, and the final buckets keep unresolved records visible instead of quietly dropping them.</p>
+        <div class="pill-row">
+          <span class="pill">Expand collections</span>
+          <span class="pill">Reduce to single-title rows</span>
+          <span class="pill">Match to IMDb</span>
+          <span class="pill">Filter feature-length candidates</span>
+          <span class="pill">Manual review</span>
+          <span class="pill">Final verification</span>
+        </div>
+      </div>
+      <div class="card">
+        <h2>High-Level Pipeline</h2>
+        <ol class="stage-list">
+          <li>Identify collection/container rows and unpack them into constituent titles.</li>
+          <li>Convert the working table so every row represents exactly one title.</li>
+          <li>Match single-title rows to IMDb using title, year, alternate title, and manual resolution logic.</li>
+          <li>Filter matched rows down to feature-length movie candidates using title type and runtime rules.</li>
+          <li>Route ambiguous cases to manual review instead of forcing weak matches.</li>
+          <li>Verify final retained films and split them into clean reporting buckets.</li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Final Sankey Diagram</h2>
+      <p>The Sankey below is a visual summary of the broad structure of the cleaning pipeline. It is intentionally high level: it shows major stage transitions and final reporting buckets, not every tiny matching heuristic.</p>
+      <div class="sankey-wrap">
+        <img src="final_pipeline_sankey.svg" alt="Sankey diagram showing the Criterion cleaning pipeline from current titles through single-title records, IMDb matching, manual review, and final output buckets." />
+      </div>
+      <div class="columns">
+        <div class="card">
+          <h3>What The Nodes Mean</h3>
+          <ul class="notes-list">
+            <li><strong>Current Criterion Titles</strong>: the live Criterion total at the top of the pipeline.</li>
+            <li><strong>Collections</strong>: collection or box-set parent rows that cannot be treated as one movie.</li>
+            <li><strong>Collection Titles</strong>: title rows extracted from those parent collections.</li>
+            <li><strong>Single-Title Records</strong>: the Stage 2 working table where each row should represent exactly one title.</li>
+            <li><strong>IMDb Matched Titles</strong>: rows that have a current IMDb match.</li>
+            <li><strong>Feature-Length Movie Candidates</strong>: matched rows that survive the broad feature-length movie filter.</li>
+            <li><strong>Manual Review</strong>: rows that still need human resolution.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>What The Edges Mean</h3>
+          <ul class="notes-list">
+            <li>Each edge is a count of records moving from one major stage to the next.</li>
+            <li>The diagram measures <strong>records / title rows</strong>, not unique films.</li>
+            <li>Collection expansion can raise row counts because one parent collection can yield multiple constituent titles.</li>
+            <li>Records are not silently removed; they are routed into explicit end categories such as <strong>Other Content</strong>, <strong>Unverified Titles</strong>, or <strong>Data Issues / Untracked</strong>.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Full Pipeline Description</h2>
+      <div class="columns">
+        <div class="card">
+          <h3>Stage 1: Expand Collections</h3>
+          <p>Collection rows are identified using title patterns, existing collection maps, and previously resolved collection outputs. Examples include trilogies, director sets, multi-film packages, and anthology releases. These are unpacked into constituent titles instead of being treated as one movie.</p>
+          <p>Bonus material, supplements, shorts, and television content are not removed at this stage; they are preserved as title rows so they can be classified later.</p>
+        </div>
+        <div class="card">
+          <h3>Stage 2: Single Titles Only</h3>
+          <p>After expansion, the working table is reduced so that every row corresponds to exactly one title. Collection/container rows stop being counted as content rows. Parent collection information is retained as provenance metadata rather than as title identity.</p>
+          <p>Duplicate titles are resolved using IMDb ID first, then normalized title and year, while preserving collection provenance as an additional source relationship.</p>
+        </div>
+        <div class="card">
+          <h3>Stage 3: Match To IMDb</h3>
+          <p>Single-title rows are matched to IMDb using exact title matching, title-plus-year matching, alternate titles, foreign-language titles, fuzzy title matching, and manual resolution when needed. Tie-breaking prefers exact normalized title and year, then corroborating metadata such as runtime or director.</p>
+          <p>Rows are not force-matched when multiple candidates remain plausible.</p>
+        </div>
+        <div class="card">
+          <h3>Stage 4: Feature-Length Movie Candidates</h3>
+          <p>IMDb-matched rows are filtered using broad feature-length rules. The default positive signal is <code>titleType = movie</code> with runtime <code>&gt;= 40</code> minutes. Rows classified as TV, miniseries, shorts, video, or other non-target media are routed out of the main movie path.</p>
+          <p>The documentary rule is treated as a project-level assumption rather than hidden inside the filter.</p>
+        </div>
+        <div class="card">
+          <h3>Stage 5: Manual Review</h3>
+          <p>Manual review handles cases that are not safe to resolve automatically: multiple IMDb candidates, large year conflicts, missing runtime, inconsistent title types, foreign-title ambiguity, and contaminated collection-derived rows.</p>
+          <p>Manual review is not a failure bucket. It is the explicit place where weak or subjective decisions are documented instead of guessed.</p>
+        </div>
+        <div class="card">
+          <h3>Stage 6: Final Verification</h3>
+          <p>After review, final retained feature-length films are verified and split into reporting buckets based on year agreement and verification status. Non-target media, unresolved titles, and source-quality failures remain visible as final outcomes.</p>
+          <p>The result is a reproducible cleaning system with explicit end states, not a one-way sequence of silent exclusions.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Manual Review Notes</h2>
+      <div class="card">
+        <p>Manual review is where the methodology is most subjective, so the process is specified rather than hidden. Rows enter review when matching or classification cannot be defended automatically.</p>
+        <ul class="notes-list">
+          <li>Multiple plausible IMDb matches.</li>
+          <li>Criterion and IMDb years conflict beyond a safe tolerance.</li>
+          <li>Runtime is missing or inconsistent.</li>
+          <li>Title type does not align with the rest of the metadata.</li>
+          <li>Foreign-language or alternate-title ambiguity remains unresolved.</li>
+          <li>A collection-derived child row looks contaminated or generic rather than a real title.</li>
+        </ul>
+        <div class="callout">Manual review is used to preserve data quality. The pipeline prefers an explicit unresolved record over a confident-looking bad match.</div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Final Output Categories</h2>
+      <div class="columns">
+        <div class="card">
+          <h3>Years Match</h3>
+          <p>Verified feature-length movie records where the Criterion year agrees with the IMDb year.</p>
+        </div>
+        <div class="card">
+          <h3>Years Off</h3>
+          <p>Verified feature-length movie records retained despite a Criterion-vs-IMDb year mismatch. The mismatch is documented rather than hidden.</p>
+        </div>
+        <div class="card">
+          <h3>Unverified Titles</h3>
+          <p>Titles that could not be matched or verified confidently enough to be treated as final verified films.</p>
+        </div>
+        <div class="card">
+          <h3>Other Content</h3>
+          <p>Rows that are real content but not target feature-length films, such as TV material, shorts, bonus features, and other non-target media.</p>
+        </div>
+        <div class="card">
+          <h3>Data Issues / Untracked</h3>
+          <p>Rows blocked by missing analysis, parsing failures, malformed source data, or other source-quality problems.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Assumptions</h2>
+      <div class="card">
+        <ul class="notes-list">
+          <li>The Sankey and methodology measure title rows / records, not unique films.</li>
+          <li>Collection expansion can increase row counts because one package can represent multiple titles.</li>
+          <li>IMDb title type and runtime are used as the strongest structured fields for separating feature-length films from non-target media.</li>
+          <li>Documentaries are treated conservatively unless the project explicitly broadens the movie definition to include all feature-length films.</li>
+          <li>Rows with incomplete or contradictory metadata are preserved as unresolved rather than forced into a final movie bucket.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Limitations</h2>
+      <div class="card">
+        <ul class="notes-list">
+          <li>Some collection-derived rows inherit noisy or contaminated matches from earlier expansion outputs.</li>
+          <li>The current local snapshot is not identical to the full live Criterion catalog at all times.</li>
+          <li>Some title-level decisions still depend on judgment calls during manual review.</li>
+          <li>Not every unresolved title is a bad record; some simply lack enough metadata for confident verification.</li>
+          <li>The Sankey is a high-level synthesis across current project outputs, not a visualization of every intermediate CSV.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Remaining Unresolved Cases</h2>
+      <div class="card">
+        <p>The pipeline keeps unresolved cases visible. These include titles with no defensible IMDb match, titles with multiple plausible candidates, rows with missing runtime or type information, and collection-derived records whose extracted child titles still look contaminated.</p>
+        <p>That unresolved residue is part of the methodology rather than a flaw in presentation: the page is meant to show where the cleaning process is strong, where it depends on explicit assumptions, and where more data or more review is still needed.</p>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    function postHeight() {
+      const height = document.documentElement.scrollHeight;
+      window.parent.postMessage({ type: 'setHeight', frame: 'methodology', height }, '*');
+    }
+
+    window.addEventListener('load', postHeight);
+    window.addEventListener('resize', postHeight);
+    setTimeout(postHeight, 150);
+  </script>
+</body>
+</html>
