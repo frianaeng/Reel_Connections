@@ -95,7 +95,7 @@
   <text class="small" x="450" y="230">160 collection rows</text>
 
   <text class="label" x="810" y="302">Collection Titles</text>
-  <text class="small" x="810" y="324">437 extracted title rows</text>
+  <text class="small" x="810" y="324">417 extracted title rows</text>
 
   <text class="label" x="840" y="142">Eclipse Rows Removed</text>
   <text class="small" x="840" y="164">48 Eclipse Series rows dropped</text>
